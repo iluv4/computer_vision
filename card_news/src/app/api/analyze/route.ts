@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(request: Request) {
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+
   try {
     const { referenceImage, userImage } = await request.json();
 
@@ -90,10 +90,8 @@ The output should look like a professionally edited marketing card-news where th
 
     console.log("OPENAI RESPONSE:", JSON.stringify(response, null, 2));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const imageOutput = response.output?.find(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (item: any) => item.type === "image_generation_call",
+      (item) => item.type === "image_generation_call",
     );
 
     if (!imageOutput) {
