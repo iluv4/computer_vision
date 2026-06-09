@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, ChangeEvent } from "react";
+import dynamic from "next/dynamic";
 import styles from "./page.module.css";
+import type { LayerDocument, BackgroundLayer } from "@/lib/layerSchema";
+
+// Fabric.js touches the DOM/canvas, so load the editor client-side only.
+const FabricLayerEditor = dynamic(
+  () => import("@/components/FabricLayerEditor"),
+  { ssr: false },
+);
 
 export default function HomePage() {
   const [refImage, setRefImage] = useState<string | null>(null);
@@ -10,6 +18,11 @@ export default function HomePage() {
   // 텍스트 결과 대신 이미지 URL 상태 관리
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
+  // 카드 주제(문구 생성 + AI 배경 재생성에 사용)
+  const [theme, setTheme] = useState<string>("");
+  // AI가 설계한 편집 가능한 레이어 문서
+  const [layerDoc, setLayerDoc] = useState<LayerDocument | null>(null);
+  const [openingEditor, setOpeningEditor] = useState<boolean>(false);
 
   const handleImageChange = (
     e: ChangeEvent<HTMLInputElement>,
@@ -57,6 +70,52 @@ export default function HomePage() {
       setError("서버와 통신하는 중 문제가 발생했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // AI에게 카드 레이아웃(편집 가능한 레이어)을 설계시키고, 생성된 이미지를
+  // 배경 레이어로 주입한 뒤 Fabric 편집기를 연다.
+  const handleOpenEditor = async () => {
+    if (!resultImageUrl) return;
+    setOpeningEditor(true);
+    setError("");
+    try {
+      const response = await fetch("/api/generate-layers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: theme.trim() || "카드뉴스" }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "레이어 생성에 실패했습니다.");
+      }
+
+      // AI가 만든 문서의 배경을 방금 생성한 합성 이미지로 교체한다.
+      const document = data.layerDocument as LayerDocument;
+      const bg = document.layers.find((l) => l.type === "background") as
+        | BackgroundLayer
+        | undefined;
+      if (bg) {
+        bg.source = "image";
+        bg.value = resultImageUrl;
+        if (bg.overlayOpacity == null) bg.overlayOpacity = 0.45;
+      } else {
+        document.layers.unshift({
+          id: "bg",
+          type: "background",
+          source: "image",
+          value: resultImageUrl,
+          overlayOpacity: 0.45,
+          z: 0,
+        });
+      }
+      setLayerDoc(document);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "레이어 생성 중 오류가 발생했습니다.",
+      );
+    } finally {
+      setOpeningEditor(false);
     }
   };
 
@@ -199,6 +258,25 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* 카드 주제 입력 (문구 생성 / AI 배경 재생성에 사용) */}
+        <div className={styles.actionArea}>
+          <input
+            type="text"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
+            placeholder="카드 주제·문구 (예: 가을 신메뉴 출시, 주말 한정 할인)"
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              padding: "12px 16px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              fontSize: 15,
+              outline: "none",
+            }}
+          />
+        </div>
+
         {/* 분석 실행 버튼 */}
         <div className={styles.actionArea}>
           <button
@@ -260,6 +338,33 @@ export default function HomePage() {
             >
               고화질 이미지 보기 및 저장
             </a>
+
+            {/* 편집기 열기: AI가 편집 가능한 텍스트/배경 레이어를 설계 */}
+            {!layerDoc && (
+              <button
+                onClick={handleOpenEditor}
+                disabled={openingEditor}
+                className={styles.submitButton}
+                style={{ marginTop: 16 }}
+              >
+                {openingEditor
+                  ? "AI가 편집 가능한 레이어를 만드는 중…"
+                  : "✏️ 편집기로 꾸미기 (텍스트·배경 편집)"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 편집 가능한 레이어 에디터 (Fabric.js) */}
+        {layerDoc && (
+          <div className={styles.resultReport}>
+            <div className={styles.reportHeader}>
+              <h3 className={styles.reportTitle}>레이어 편집기</h3>
+            </div>
+            <FabricLayerEditor
+              document={layerDoc}
+              theme={theme.trim() || "카드뉴스"}
+            />
           </div>
         )}
       </section>
