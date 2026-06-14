@@ -55,6 +55,7 @@ export default function HomePage() {
         body: JSON.stringify({
           referenceImage: refImage,
           userImage: userImage,
+          theme: theme.trim(),
         }),
       });
 

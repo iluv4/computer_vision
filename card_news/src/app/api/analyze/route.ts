@@ -7,7 +7,10 @@ export async function POST(request: Request) {
   });
 
   try {
-    const { referenceImage, userImage } = await request.json();
+    const { referenceImage, userImage, theme } = await request.json();
+
+    // 사용자가 입력한 카드 주제·문구. 있을 때만 프롬프트에 반영한다.
+    const topicText = typeof theme === "string" ? theme.trim() : "";
 
     if (!referenceImage || !userImage) {
       return NextResponse.json(
@@ -20,9 +23,20 @@ export async function POST(request: Request) {
       );
     }
 
+    // 주제 문구가 있으면, 이미지1의 헤드라인 텍스트만 이 주제로 교체하도록 지시한다.
+    const topicInstruction = topicText
+      ? `
+The card-news topic/headline to convey is: "${topicText}".
+Replace ONLY the main headline/promotional copy from image 1 with text expressing this topic, written in the SAME language as image 1 (Korean if image 1 is Korean).
+Keep the original font, size, color, alignment and POSITION of that text exactly as in image 1 — change only the wording.
+Do NOT add new text blocks beyond those already present in image 1, and do NOT translate or alter any text that is unrelated to the topic.
+`
+      : "";
+
     const response = await openai.responses.create({
       model: "gpt-4.1",
-      tools: [{ type: "image_generation" }],
+      // 카드뉴스는 세로형이므로 세로 캔버스로 생성해 편집기(1024x1536)와 비율을 맞춘다.
+      tools: [{ type: "image_generation", size: "1024x1536" }],
       input: [
         {
           role: "user",
@@ -31,6 +45,7 @@ export async function POST(request: Request) {
               type: "input_text",
               text: `
 Use image 1 as the PRIMARY template and design source.
+${topicInstruction}
 
 Image 1 controls:
 - background
