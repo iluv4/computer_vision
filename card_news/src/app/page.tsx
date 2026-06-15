@@ -13,7 +13,8 @@ const FabricLayerEditor = dynamic(
 
 export default function HomePage() {
   const [refImage, setRefImage] = useState<string | null>(null);
-  const [userImage, setUserImage] = useState<string | null>(null);
+  // 합성 주체(상품) 사진은 여러 장 첨부할 수 있다.
+  const [userImages, setUserImages] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   // 텍스트 결과 대신 이미지 URL 상태 관리
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
@@ -24,22 +25,42 @@ export default function HomePage() {
   const [layerDoc, setLayerDoc] = useState<LayerDocument | null>(null);
   const [openingEditor, setOpeningEditor] = useState<boolean>(false);
 
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
   const handleImageChange = (
     e: ChangeEvent<HTMLInputElement>,
     setImage: (value: string | null) => void,
   ) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      readFileAsDataUrl(file).then(setImage);
     }
   };
 
+  // 여러 장의 주체 사진을 한 번에 첨부할 수 있도록 누적 방식으로 추가한다.
+  const handleAddUserImages = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const dataUrls = await Promise.all(
+      Array.from(files).map((file) => readFileAsDataUrl(file)),
+    );
+    setUserImages((prev) => [...prev, ...dataUrls]);
+    // 같은 파일을 다시 선택할 수 있도록 input 값을 비운다.
+    e.target.value = "";
+  };
+
+  const removeUserImage = (index: number) => {
+    setUserImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleAnalyze = async () => {
-    if (!refImage || !userImage) {
+    if (!refImage || userImages.length === 0) {
       alert("레퍼런스 이미지와 촬영하신 사진을 모두 등록해주세요.");
       return;
     }
@@ -54,7 +75,9 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           referenceImage: refImage,
-          userImage: userImage,
+          // 다중 주체 사진 전송. 구버전 호환을 위해 단일 필드도 함께 보낸다.
+          userImages,
+          userImage: userImages[0],
           theme: theme.trim(),
         }),
       });
@@ -193,26 +216,50 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* 2. 유저 촬영 이미지 업로드 */}
+          {/* 2. 유저 촬영 이미지 업로드 (여러 장 첨부 가능) */}
           <div className={styles.card}>
             <div>
               <div className={styles.cardHeader}>
                 <h2 className={styles.cardTitle}>02. 내가 직접 찍은 사진</h2>
-                {userImage && (
-                  <span className={styles.statusBadge}>등록됨</span>
+                {userImages.length > 0 && (
+                  <span className={styles.statusBadge}>
+                    {userImages.length}장 등록됨
+                  </span>
                 )}
               </div>
 
-              <label
-                className={`${styles.dropzone} ${userImage ? styles.dropzoneActive : ""}`}
-              >
-                {userImage ? (
-                  <img
-                    src={userImage}
-                    alt="User Shot"
-                    className={styles.previewImage}
-                  />
-                ) : (
+              {userImages.length > 0 ? (
+                <div className={styles.thumbGrid}>
+                  {userImages.map((img, index) => (
+                    <div key={index} className={styles.thumbItem}>
+                      <img
+                        src={img}
+                        alt={`Subject ${index + 1}`}
+                        className={styles.thumbImage}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeUserImage(index)}
+                        className={styles.thumbRemove}
+                        aria-label="사진 삭제"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <label className={styles.thumbAdd}>
+                    <span>＋ 사진 추가</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleAddUserImages}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <label className={styles.dropzone}>
                   <div className={styles.uploadInfo}>
                     {/* SVG 아이콘 그대로 유지 */}
                     <svg
@@ -236,24 +283,25 @@ export default function HomePage() {
                     </svg>
                     <p className={styles.uploadText}>클릭하여 이미지 업로드</p>
                     <p className={styles.uploadSubtext}>
-                      카메라로 촬영한 원본 사진
+                      여러 장 동시 선택 가능 (촬영한 원본 사진)
                     </p>
                   </div>
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleImageChange(e, setUserImage)}
-                  style={{ display: "none" }}
-                />
-              </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleAddUserImages}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              )}
             </div>
-            {userImage && (
+            {userImages.length > 0 && (
               <button
-                onClick={() => setUserImage(null)}
+                onClick={() => setUserImages([])}
                 className={styles.clearButton}
               >
-                이미지 지우기
+                전체 지우기
               </button>
             )}
           </div>
