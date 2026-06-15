@@ -33,8 +33,11 @@ export async function generateLayerDocument(opts: {
   // for an image background.
   backgroundSrc?: string;
   model?: string;
+  // Sampling temperature. 0 (default) is deterministic; higher values add
+  // diversity, used by Test-Time Scaling to generate distinct candidates.
+  temperature?: number;
 }): Promise<LayerDocument | null> {
-  const { openai, theme, clientContext, backgroundSrc, model = 'gpt-4.1-mini' } = opts;
+  const { openai, theme, clientContext, backgroundSrc, model = 'gpt-4.1-mini', temperature = 0 } = opts;
 
   const prompt = `You are a senior Korean Instagram card-news designer. Design an editable, layered card.
 
@@ -52,6 +55,7 @@ ${SCHEMA_SPEC}`;
       response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 1500,
+      temperature,
     });
 
     const raw = res.choices[0]?.message?.content;
